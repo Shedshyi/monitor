@@ -8,7 +8,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .models import User, Direction, Criteria, Indicator, TeacherIndicator, Notification
 from .serializers import (UserSerializer, DirectionSerializer, CriteriaSerializer,
                           IndicatorSerializer, TeacherIndicatorSerializer, NotificationSerializer)
-from django.db.models import Sum, Q
+from django.db.models import Sum, Q, F
 
        
 
@@ -307,6 +307,39 @@ from rest_framework import generics
 from .serializers import UserSerializer
 from .models import User
 
+# class FilteredTeachersView(generics.ListAPIView):
+#     serializer_class = UserSerializer
+
+#     def get_queryset(self):
+#         # Получаем параметры из запроса
+#         direction_id = self.request.query_params.get('direction_id')
+#         criteria_id = self.request.query_params.get('criteria_id')
+#         indicator_id = self.request.query_params.get('indicator_id')
+#         points = self.request.query_params.get('points')
+
+#         # Основной queryset, без агрегации
+#         queryset = User.objects.all()
+
+#         # Фильтрация по переданным параметрам
+#         filters = Q()
+#         if direction_id:
+#             filters &= Q(teacherindicator__indicator__criteria__direction_id=direction_id)
+#         if criteria_id:
+#             filters &= Q(teacherindicator__indicator__criteria_id=criteria_id)
+#         if indicator_id:
+#             filters &= Q(teacherindicator__indicator_id=indicator_id)
+#         if points:
+#             # Если у вас есть поле для баллов, используйте его для фильтрации
+#             filters &= Q(teacherindicator__some_other_field=points)  # Здесь подставьте правильное поле
+
+#         # Применяем фильтрацию
+#         queryset = queryset.filter(filters).distinct()
+
+#         # Если нужно, добавьте другие поля для агрегации
+#         # Например, если нужно агрегировать по какому-то другому полю
+#         # queryset = queryset.annotate(total_points=Sum('teacherindicator__some_other_field')).order_by('-total_points')
+
+#         return queryset 
 class FilteredTeachersView(generics.ListAPIView):
     serializer_class = UserSerializer
 
@@ -329,14 +362,28 @@ class FilteredTeachersView(generics.ListAPIView):
         if indicator_id:
             filters &= Q(teacherindicator__indicator_id=indicator_id)
         if points:
-            # Если у вас есть поле для баллов, используйте его для фильтрации
-            filters &= Q(teacherindicator__some_other_field=points)  # Здесь подставьте правильное поле
+            filters &= Q(teacherindicator__points=points)  # Здесь подставьте правильное поле для баллов
 
         # Применяем фильтрацию
         queryset = queryset.filter(filters).distinct()
 
-        # Если нужно, добавьте другие поля для агрегации
-        # Например, если нужно агрегировать по какому-то другому полю
-        # queryset = queryset.annotate(total_points=Sum('teacherindicator__some_other_field')).order_by('-total_points')
+        # Подсчитываем баллы за показатели, критерии и направления
+        queryset = queryset.annotate(
+            indicator_score=Sum('teacherindicator__points'),  # Суммируем баллы за показатели
+            criteria_score=Sum('teacherindicator__indicator__criteria__points'),  # Суммируем баллы по критериям
+            direction_score=Sum('teacherindicator__indicator__criteria__direction__points')  # Суммируем баллы по направлениям
+        )
 
         return queryset
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        # Применяем сериализацию данных
+        serializer = self.get_serializer(queryset, many=True)
+
+        # Обрабатываем данные перед отправкой
+        for user in serializer.data:
+            # Здесь можно добавить логику, если нужно преобразовать или обработать данные
+            user['total_score'] = user['indicator_score']  # Пример, если все баллы суммируются в общий балл
+
+        return Response(serializer.data)
