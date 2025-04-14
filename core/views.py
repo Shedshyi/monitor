@@ -307,39 +307,6 @@ from rest_framework import generics
 from .serializers import UserSerializer
 from .models import User
 
-# class FilteredTeachersView(generics.ListAPIView):
-#     serializer_class = UserSerializer
-
-#     def get_queryset(self):
-#         # Получаем параметры из запроса
-#         direction_id = self.request.query_params.get('direction_id')
-#         criteria_id = self.request.query_params.get('criteria_id')
-#         indicator_id = self.request.query_params.get('indicator_id')
-#         points = self.request.query_params.get('points')
-
-#         # Основной queryset, без агрегации
-#         queryset = User.objects.all()
-
-#         # Фильтрация по переданным параметрам
-#         filters = Q()
-#         if direction_id:
-#             filters &= Q(teacherindicator__indicator__criteria__direction_id=direction_id)
-#         if criteria_id:
-#             filters &= Q(teacherindicator__indicator__criteria_id=criteria_id)
-#         if indicator_id:
-#             filters &= Q(teacherindicator__indicator_id=indicator_id)
-#         if points:
-#             # Если у вас есть поле для баллов, используйте его для фильтрации
-#             filters &= Q(teacherindicator__some_other_field=points)  # Здесь подставьте правильное поле
-
-#         # Применяем фильтрацию
-#         queryset = queryset.filter(filters).distinct()
-
-#         # Если нужно, добавьте другие поля для агрегации
-#         # Например, если нужно агрегировать по какому-то другому полю
-#         # queryset = queryset.annotate(total_points=Sum('teacherindicator__some_other_field')).order_by('-total_points')
-
-#         return queryset 
 class FilteredTeachersView(generics.ListAPIView):
     serializer_class = UserSerializer
 
@@ -362,28 +329,77 @@ class FilteredTeachersView(generics.ListAPIView):
         if indicator_id:
             filters &= Q(teacherindicator__indicator_id=indicator_id)
         if points:
-            filters &= Q(teacherindicator__points=points)  # Здесь подставьте правильное поле для баллов
+            # Если у вас есть поле для баллов, используйте его для фильтрации
+            filters &= Q(teacherindicator__some_other_field=points)  # Здесь подставьте правильное поле
 
         # Применяем фильтрацию
         queryset = queryset.filter(filters).distinct()
 
-        # Подсчитываем баллы за показатели, критерии и направления
-        queryset = queryset.annotate(
-            indicator_score=Sum('teacherindicator__points'),  # Суммируем баллы за показатели
-            criteria_score=Sum('teacherindicator__indicator__criteria__points'),  # Суммируем баллы по критериям
-            direction_score=Sum('teacherindicator__indicator__criteria__direction__points')  # Суммируем баллы по направлениям
-        )
+        # Если нужно, добавьте другие поля для агрегации
+        # Например, если нужно агрегировать по какому-то другому полю
+        # queryset = queryset.annotate(total_points=Sum('teacherindicator__some_other_field')).order_by('-total_points')
 
-        return queryset
+        return queryset 
 
-    def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
-        # Применяем сериализацию данных
-        serializer = self.get_serializer(queryset, many=True)
+class FilteredTeachersByLevelView(APIView):
+    def get(self, request, *args, **kwargs):
+        # Получаем параметры из запроса
+        direction_id = request.query_params.get('direction_id')
+        criteria_id = request.query_params.get('criteria_id')
+        indicator_id = request.query_params.get('indicator_id')
 
-        # Обрабатываем данные перед отправкой
-        for user in serializer.data:
-            # Здесь можно добавить логику, если нужно преобразовать или обработать данные
-            user['total_score'] = user['indicator_score']  # Пример, если все баллы суммируются в общий балл
+        filters = Q()  # Инициализируем фильтры
 
-        return Response(serializer.data)
+        # Применяем фильтрацию по направлению, критерию или показателю
+        if direction_id:
+            filters &= Q(teacherindicator__indicator__criteria__direction_id=direction_id)
+        if criteria_id:
+            filters &= Q(teacherindicator__indicator__criteria_id=criteria_id)
+        if indicator_id:
+            filters &= Q(teacherindicator__indicator_id=indicator_id)
+
+        # Получаем пользователей с фильтрами
+        users = User.objects.filter(filters).distinct()
+
+        result = []
+
+        for user in users:
+            # Собираем баллы для каждого уровня
+            total_score = 0
+            direction_score = 0
+            criteria_score = 0
+            indicator_score = 0
+
+            # Собираем баллы для показателей
+            indicators = TeacherIndicator.objects.filter(user=user)
+            indicator_score = indicators.aggregate(total=Sum('points'))['total'] or 0
+
+            # Собираем баллы для критериев
+            criteria = indicators.values('indicator__criteria').distinct()
+            criteria_score = sum(
+                TeacherIndicator.objects.filter(user=user, indicator__criteria_id=crit['indicator__criteria'])
+                .aggregate(total=Sum('points'))['total'] or 0
+                for crit in criteria
+            )
+
+            # Собираем баллы для направления
+            directions = criteria.values('indicator__criteria__direction').distinct()
+            direction_score = sum(
+                TeacherIndicator.objects.filter(user=user, indicator__criteria__direction_id=dir['indicator__criteria__direction'])
+                .aggregate(total=Sum('points'))['total'] or 0
+                for dir in directions
+            )
+
+            # Общий балл (сумма всех баллов)
+            total_score = direction_score + criteria_score + indicator_score
+
+            result.append({
+                'id': user.id,
+                'username': user.username,
+                'total_score': total_score,
+                'direction_score': direction_score,
+                'criteria_score': criteria_score,
+                'indicator_score': indicator_score,
+            })
+
+        return Response(result)

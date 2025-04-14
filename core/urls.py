@@ -4,7 +4,7 @@ from .views import (
     CriteriaListCreateView, CriteriaDetailView,
     IndicatorListCreateView, IndicatorDetailView,
     TeacherIndicatorCreateView, TeacherIndicatorListView,
-    RecalculateScoresView, NotificationListView,RegisterView, LoginView, MyScoresView, UserDetailView,TopTeachersView,AchievementsListView,FilteredTeachersView,
+    RecalculateScoresView, NotificationListView,RegisterView, LoginView, MyScoresView, UserDetailView,TopTeachersView,AchievementsListView,FilteredTeachersView,FilteredTeachersByLevelView
 )
 from .views import TestDirectionView
 
@@ -29,4 +29,5 @@ urlpatterns = [
     path('top-teachers/', TopTeachersView.as_view(), name='top-teachers'),
     path('achievements/', AchievementsListView.as_view(), name='achievements-list'),
     path('filter-teachers/', FilteredTeachersView.as_view(), name='filtered-teachers'),
+    path('api/filtered-teachers-by-level/', FilteredTeachersByLevelView.as_view(), name='filtered_teachers_by_level'),
 ]
