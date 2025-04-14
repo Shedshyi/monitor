@@ -116,7 +116,7 @@ class TeacherIndicatorCreateView(generics.GenericAPIView):
                 TeacherIndicator.objects.create(
                     teacher=teacher,
                     indicator=indicator,
-                    # assigned_points=indicator.points
+                    description=description,
                 )
 
                 # Создаём уведомление
