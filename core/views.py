@@ -341,14 +341,15 @@ class FilteredTeachersView(generics.ListAPIView):
 
         return queryset 
 
-class FilteredTeachersByLevelView(APIView):
+class BestTeachersView(APIView):
     def get(self, request, *args, **kwargs):
         # Получаем параметры из запроса
         direction_id = request.query_params.get('direction_id')
         criteria_id = request.query_params.get('criteria_id')
         indicator_id = request.query_params.get('indicator_id')
 
-        filters = Q()  # Инициализируем фильтры
+        # Создаем фильтры на основе параметров запроса
+        filters = Q()  # Инициализируем пустой фильтр
 
         # Применяем фильтрацию по направлению, критерию или показателю
         if direction_id:
@@ -363,34 +364,34 @@ class FilteredTeachersByLevelView(APIView):
 
         result = []
 
+        # Для каждого пользователя считаем баллы
         for user in users:
-            # Собираем баллы для каждого уровня
-            total_score = 0
+            # Суммируем баллы для каждого уровня
             direction_score = 0
             criteria_score = 0
             indicator_score = 0
 
-            # Собираем баллы для показателей
+            # Получаем баллы по показателям (связи с индикаторами)
             indicators = TeacherIndicator.objects.filter(user=user)
             indicator_score = indicators.aggregate(total=Sum('points'))['total'] or 0
 
-            # Собираем баллы для критериев
-            criteria = indicators.values('indicator__criteria').distinct()
+            # Получаем баллы по критериям
+            criteria = indicators.values('indicator__criteria_id').distinct()
             criteria_score = sum(
-                TeacherIndicator.objects.filter(user=user, indicator__criteria_id=crit['indicator__criteria'])
+                TeacherIndicator.objects.filter(user=user, indicator__criteria_id=crit['indicator__criteria_id'])
                 .aggregate(total=Sum('points'))['total'] or 0
                 for crit in criteria
             )
 
-            # Собираем баллы для направления
-            directions = criteria.values('indicator__criteria__direction').distinct()
+            # Получаем баллы по направлениям
+            directions = criteria.values('indicator__criteria__direction_id').distinct()
             direction_score = sum(
-                TeacherIndicator.objects.filter(user=user, indicator__criteria__direction_id=dir['indicator__criteria__direction'])
+                TeacherIndicator.objects.filter(user=user, indicator__criteria__direction_id=dir['indicator__criteria__direction_id'])
                 .aggregate(total=Sum('points'))['total'] or 0
                 for dir in directions
             )
 
-            # Общий балл (сумма всех баллов)
+            # Общий балл
             total_score = direction_score + criteria_score + indicator_score
 
             result.append({
