@@ -40,7 +40,7 @@ class TeacherIndicatorSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TeacherIndicator
-        fields = ['id', 'teacher', 'indicator', 'points', 'indicator_title', 'criteria_title', 'direction_title', 'created_at']
+        fields = ['id', 'teacher', 'indicator', 'description','points', 'indicator_title', 'criteria_title', 'direction_title', 'created_at']
 
 
 class NotificationSerializer(serializers.ModelSerializer):

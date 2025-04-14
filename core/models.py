@@ -50,7 +50,7 @@ class Indicator(models.Model):
 class TeacherIndicator(models.Model):
     teacher = models.ForeignKey(User, on_delete=models.CASCADE)       # Какому учителю принадлежит
     indicator = models.ForeignKey(Indicator, on_delete=models.CASCADE) # Какой показатель
-    # assigned_points = models.IntegerField()                           # Баллы на момент привязки
+    description = models.TextField(null=True, blank=True)    
     created_at = models.DateTimeField(auto_now_add=True)              # Дата создания
 
     def save(self, *args, **kwargs):
