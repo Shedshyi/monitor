@@ -343,64 +343,60 @@ class FilteredTeachersView(generics.ListAPIView):
 
 class BestTeachersView(APIView):
     def get(self, request, *args, **kwargs):
-        # Получаем параметры из запроса
-        direction_id = request.query_params.get('direction_id')
-        criteria_id = request.query_params.get('criteria_id')
-        indicator_id = request.query_params.get('indicator_id')
-
-        # Создаем фильтры на основе параметров запроса
-        filters = Q()  # Инициализируем пустой фильтр
-
-        # Применяем фильтрацию по направлению, критерию или показателю
-        if direction_id:
-            filters &= Q(teacherindicator__indicator__criteria__direction_id=direction_id)
-        if criteria_id:
-            filters &= Q(teacherindicator__indicator__criteria_id=criteria_id)
-        if indicator_id:
-            filters &= Q(teacherindicator__indicator_id=indicator_id)
-
-        # Получаем пользователей с фильтрами
-        users = User.objects.filter(filters).distinct()
-
         result = []
+        users = User.objects.filter(is_admin=False)
 
-        # Для каждого пользователя считаем баллы
         for user in users:
-            # Суммируем баллы для каждого уровня
-            direction_score = 0
-            criteria_score = 0
-            indicator_score = 0
-
-            # Получаем баллы по показателям (связи с индикаторами)
-            indicators = TeacherIndicator.objects.filter(user=user)
-            indicator_score = indicators.aggregate(total=Sum('points'))['total'] or 0
-
-            # Получаем баллы по критериям
-            criteria = indicators.values('indicator__criteria_id').distinct()
-            criteria_score = sum(
-                TeacherIndicator.objects.filter(user=user, indicator__criteria_id=crit['indicator__criteria_id'])
-                .aggregate(total=Sum('points'))['total'] or 0
-                for crit in criteria
-            )
-
-            # Получаем баллы по направлениям
-            directions = criteria.values('indicator__criteria__direction_id').distinct()
-            direction_score = sum(
-                TeacherIndicator.objects.filter(user=user, indicator__criteria__direction_id=dir['indicator__criteria__direction_id'])
-                .aggregate(total=Sum('points'))['total'] or 0
-                for dir in directions
-            )
-
-            # Общий балл
-            total_score = direction_score + criteria_score + indicator_score
-
-            result.append({
+            user_data = {
                 'id': user.id,
                 'username': user.username,
-                'total_score': total_score,
-                'direction_score': direction_score,
-                'criteria_score': criteria_score,
-                'indicator_score': indicator_score,
-            })
+                'directions': []
+            }
+
+            # Получаем все TeacherIndicator пользователя
+            indicators = TeacherIndicator.objects.filter(teacher=user).select_related(
+                'indicator__criteria__direction'
+            )
+
+            # Группируем по направлениям
+            direction_map = {}
+            for ti in indicators:
+                direction = ti.indicator.criteria.direction
+                criteria = ti.indicator.criteria
+
+                if direction.id not in direction_map:
+                    direction_map[direction.id] = {
+                        'direction_id': direction.id,
+                        'direction_title': direction.title,
+                        'criteria': {}
+                    }
+
+                if criteria.id not in direction_map[direction.id]['criteria']:
+                    direction_map[direction.id]['criteria'][criteria.id] = {
+                        'criteria_id': criteria.id,
+                        'criteria_title': criteria.title,
+                        'score': 0
+                    }
+
+                direction_map[direction.id]['criteria'][criteria.id]['score'] += ti.indicator.points
+
+            # Формируем финальную структуру и считаем баллы
+            for direction_data in direction_map.values():
+                direction_score = 0
+                criteria_list = []
+
+                for crit_data in direction_data['criteria'].values():
+                    direction_score += crit_data['score']
+                    criteria_list.append(crit_data)
+
+                user_data['directions'].append({
+                    'direction_id': direction_data['direction_id'],
+                    'direction_title': direction_data['direction_title'],
+                    'total_score': direction_score,
+                    'criteria': criteria_list
+                })
+
+            if user_data['directions']:  # Добавляем только если есть баллы
+                result.append(user_data)
 
         return Response(result)
